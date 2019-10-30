@@ -30,6 +30,7 @@ do
    esac
 done
 
+mkdir -p $DATA_DIR
 for f in $(find ${VERILOG_DIR} -type f); do
     filename=$(basename $f)
     stem=$(basename $f .v)
