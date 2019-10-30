@@ -66,6 +66,7 @@ class Vertex(object):
         if type not in NODE_TYPES:
             raise Exception(f"ERROR: Unknown Node type {type}")
         self.name = name
+        self.include = 0
         self.inputs = []
         self.output = None
         self.id = None
@@ -85,7 +86,7 @@ class Vertex(object):
         edge.addLoad(self)
 
     def print(self):
-        print(f'  Vertex {self.name}:')
+        print(f'  Vertex {self.name} ({self.include}):')
         for i in self.inputs:
             print(f'    {i.name} ->')
         if self.output:
@@ -157,6 +158,21 @@ class Graph(object):
         for i, adj in enumerate(matrix):
             print(f'Id #{i:02}: {adj:016x}')
 
+def addRow(row, g):
+    type = row[1]
+    name = row[2]
+    v = g.addVertex(type, name)
+    v.include = int(row[0])
+    wireName = row[3]
+    if wireName:
+        edge = g.getEdge(row[3])
+        v.setOutput(edge)
+    for wireName in row[4:]:
+        if not wireName:
+            continue
+        edge = g.getEdge(wireName)
+        v.addInput(edge)
+
 def makeTrainingEntry(size, label, graph, matrix):
     entry = np.zeros(size)
     features = entry[:len(matrix)*2]
@@ -171,7 +187,8 @@ def makeTrainingEntry(size, label, graph, matrix):
     #Labels
     labels[0] = LABEL_CLASSES[label]
     for v in graph.vertices:
-        labels[1+graph.vertices[v].id] = 1
+        if graph.vertices[v].include:
+            labels[1+graph.vertices[v].id] = 1
 
     return entry
 
@@ -190,25 +207,13 @@ def main():
     with open(args.csv, 'r') as f:
         reader = csv.reader(CSVFilter(f))
         for row in reader:
-            type = row[0]
-            name = row[1]
-            v = g.addVertex(type, name)
-            wireName = row[2]
-            if wireName:
-                edge = g.getEdge(row[2])
-                v.setOutput(edge)
-            for wireName in row[3:]:
-                if not wireName:
-                    continue
-                edge = g.getEdge(wireName)
-                v.addInput(edge)
+            addRow(row, g)
 
     #m = g.generateMatrix(args.numVertices)
     #g.printGraph()
     #g.printMatrix(m, args.numVertices)
 
     numModelInputs = args.numVertices*2
-    #numModelOutputs = len(NODE_TYPES)+args.numVertices
     numModelOutputs = 1+args.numVertices
     entrySize = numModelInputs+numModelOutputs
     with open(args.outputFile, 'wb') as f:
@@ -216,6 +221,7 @@ def main():
         for i in range(args.permutations):
             m = g.generateMatrix(args.numVertices)
             data[i] = makeTrainingEntry(entrySize, args.label, g, m)
+            (features, labels) = np.hsplit(data[i], (args.numVertices*2,))
         np.save(f, data)
 
     return 0
