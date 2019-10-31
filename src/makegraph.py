@@ -43,7 +43,7 @@ class CSVFilter(object):
     def __next__(self):
         line = self.fp.__next__().strip()
         if not line or line.startswith('#'):
-            return self.next()
+            return next(self)
         return line
 
 NODE_TYPES = [
@@ -159,15 +159,16 @@ class Graph(object):
             print(f'Id #{i:02}: {adj:016x}')
 
 def addRow(row, g):
-    type = row[1]
-    name = row[2]
+    type = row[1].strip()
+    name = row[2].strip()
     v = g.addVertex(type, name)
     v.include = int(row[0])
-    wireName = row[3]
+    wireName = row[3].strip()
     if wireName:
-        edge = g.getEdge(row[3])
+        edge = g.getEdge(row[3].strip())
         v.setOutput(edge)
     for wireName in row[4:]:
+        wireName = wireName.strip()
         if not wireName:
             continue
         edge = g.getEdge(wireName)

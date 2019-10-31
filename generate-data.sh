@@ -31,7 +31,7 @@ do
 done
 
 mkdir -p $DATA_DIR
-for f in $(find ${VERILOG_DIR} -type f); do
+for f in $(find ${VERILOG_DIR} -type f -name "*.v"); do
     filename=$(basename $f)
     stem=$(basename $f .v)
     dirname=$(dirname $f)
