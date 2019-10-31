@@ -38,5 +38,5 @@ for f in $(find ${VERILOG_DIR} -type f); do
     label=$(basename $dirname)
 
     echo "Generating data for ${filename}..."
-    ./src/make-graph.py $f -o ${DATA_DIR}/${stem}.npy -l $label ${OPTIONAL_ARGS}
+    ./src/makegraph.py $f -o ${DATA_DIR}/${stem}.npy -l $label ${OPTIONAL_ARGS}
 done
