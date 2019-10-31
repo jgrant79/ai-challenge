@@ -2,6 +2,7 @@
 
 import argparse
 import csv
+import makegraph as mg
 import numpy as np
 import os
 import random
@@ -19,7 +20,7 @@ def parseArgs():
 
     parser.add_argument('npys', metavar='NumPy training file', type=str, nargs='*', help='')
     parser.add_argument('-i', '--inputs', metavar='<# Inputs>', dest='numInputs', type=int, required=True, help='Number of model inputs')
-    parser.add_argument('-c', '--classes', metavar='<# Classes>', dest='numClasses', type=int, required=True, help='Number of classes to classify as')
+    #parser.add_argument('-c', '--classes', metavar='<# Classes>', dest='numClasses', type=int, required=True, help='Number of classes to classify as')
     parser.add_argument('-t', '--tests', metavar='<# Tests>', dest='numTests', type=int, required=True, help='Number of records to reserve for testing the model')
     parser.add_argument('-e', '--epochs', metavar='<# Epochs>', dest='numEpochs', type=int, default=1000, help='Number of epochs to train the model for')
     parser.add_argument('-b', '--batches', metavar='<Batch size>', dest='batchSize', type=int, default=32, help='Size of batch for each epoch')
@@ -54,23 +55,13 @@ def main():
     training, test = np.vsplit(training, (training.shape[0]-args.numTests,))
 
     numFeatures = args.numInputs
-    numClasses = args.numClasses
+    numClasses = len(mg.LABELS)
     numInclusionLabels = training.shape[1]-args.numInputs-1
-    #features, classLabels, inclusionLabels = np.hsplit(training, (numFeatures,numFeatures+1))
-    #print(features.shape)
-    #print(classLabels.shape)
-    #print(inclusionLabels.shape)
 
-    classModel = tf.keras.Sequential([
-        tf.keras.layers.Dense(10, activation=tf.nn.relu, input_shape=(numFeatures,)),  # input shape required
-        tf.keras.layers.Dense(10, activation=tf.nn.relu),
-        tf.keras.layers.Dense(numClasses)
-    ])
-
-    inclusionModel = tf.keras.Sequential([
-        tf.keras.layers.Dense(10, activation=tf.nn.relu, input_shape=(numFeatures,)),  # input shape required
-        tf.keras.layers.Dense(10, activation=tf.nn.relu),
-        tf.keras.layers.Dense(numInclusionLabels)
+    model = tf.keras.Sequential([
+        tf.keras.layers.Dense(numFeatures//2, activation=tf.nn.relu, input_shape=(numFeatures,)),  # input shape required
+        tf.keras.layers.Dense(numFeatures//2, activation=tf.nn.relu),
+        tf.keras.layers.Dense(numClasses+numInclusionLabels)
     ])
 
     #predictions = model(features)
@@ -82,48 +73,59 @@ def main():
     scc = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
     bce = tf.keras.losses.BinaryCrossentropy()
 
-    def loss(lossObj, model, x, y):
-        y_ = model(x)
-        return lossObj(y_true=y, y_pred=y_)
+    def loss(model, features, classLabels, inclusionLabels):
+        preds = model(features)
+        (classPreds, inclusionPreds) = tf.split(preds, (numClasses,numInclusionLabels), 1)
+        classLoss = scc(y_true=classLabels, y_pred=classPreds)
+        inclusionLoss = bce(y_true=inclusionLabels, y_pred=inclusionPreds)
+        lossValue = tf.reduce_mean((classLoss, inclusionLoss))
+        return lossValue
 
-    def grad(lossObj, model, inputs, targets):
+    def grad(model, features, classLabels, inclusionLabels):
         with tf.GradientTape() as tape:
-            loss_value = loss(lossObj, model, inputs, targets)
-        return loss_value, tape.gradient(loss_value, model.trainable_variables)
+            lossValue = loss(model, features, classLabels, inclusionLabels)
+        return lossValue, tape.gradient(lossValue, model.trainable_variables)
 
     # Keep results for plotting
-    train_loss_results = []
-    train_accuracy_results = []
+    #train_loss_results = []
+    #train_accuracy_results = []
 
-    #numEpochs = min(args.numEpochs, training.shape[0]//args.batchSize)
     numBatches = training.shape[0]//args.batchSize
     batches = np.vsplit(training, [i*args.batchSize for i in range(1,numBatches)])
-    #batches = np.vsplit(training, training.shape[0]//args.batchSize)
 
     #features, classLabels, inclusionLabels = np.hsplit(training, (numFeatures,numFeatures+1))
 
     for epochNum in range(args.numEpochs):
         epoch_loss_avg = tf.keras.metrics.Mean()
-        epoch_accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
+        epoch_class_accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
+        epoch_inclusion_accuracy = tf.keras.metrics.BinaryAccuracy()
 
         # Training loop
         for batchNum, batch in enumerate(batches):
-            features, classLabels, inclusionLabels = np.hsplit(batch, (numFeatures,numFeatures+1))
+            #features, classLabels, inclusionLabels = np.hsplit(batch, (numFeatures,numFeatures+1))
+            features, labels = np.hsplit(batch, (numFeatures,))
+            classLabels, inclusionLabels = np.hsplit(labels, (1,))
+
             # Optimize the model
-            loss_value, grads = grad(scc, classModel, features, classLabels)
-            optimizer.apply_gradients(zip(grads, classModel.trainable_variables))
+            loss_value, grads = grad(model, features, classLabels, inclusionLabels)
+            optimizer.apply_gradients(zip(grads, model.trainable_variables))
 
             # Track progress
             epoch_loss_avg(loss_value)  # Add current batch loss
             # Compare predicted label to actual label
-            epoch_accuracy(classLabels, classModel(features))
+            preds = model(features)
+            (classPreds, inclusionPreds) = tf.split(preds, (numClasses,numInclusionLabels), 1)
+
+            #epoch_accuracy(labels, model(features))
+            epoch_class_accuracy(classLabels, classPreds)
+            epoch_inclusion_accuracy(inclusionLabels, inclusionPreds)
 
         # End epoch
-        train_loss_results.append(epoch_loss_avg.result())
-        train_accuracy_results.append(epoch_accuracy.result())
+        #train_loss_results.append(epoch_loss_avg.result())
+        #train_accuracy_results.append(epoch_accuracy.result())
 
-        if epochNum % 50 == 0:
-            print("Epoch {:03d}: Loss: {:.3f}, Accuracy: {:.3%}".format(epochNum, epoch_loss_avg.result(), epoch_accuracy.result()))
+        if epochNum % 10 == 0:
+            print("Epoch {:03d}: Loss: {:.3f}, Class Accuracy: {:.3%}, Inclusion Accuracy: {:.3%}".format(epochNum, epoch_loss_avg.result(), epoch_class_accuracy.result(), epoch_inclusion_accuracy.result()))
 
     return 0
     test_accuracy = tf.keras.metrics.Accuracy()
