@@ -11,12 +11,13 @@ maxVertices = 64
 permutations = 10000
 
 LABELS = [
+        'unknown',
         'and',
         'or',
         'xor',
         'adder',
         ]
-LABEL_CLASSES = dict(zip(LABELS, range(1, 1+len(LABELS))))
+LABEL_CLASSES = dict(zip(LABELS, range(len(LABELS))))
 
 def parseArgs():
     """
@@ -50,6 +51,7 @@ NODE_TYPES = [
         'IN',
         'OUT',
         'and',
+        'mux2',
         'nand',
         'nor',
         'not',
@@ -57,10 +59,9 @@ NODE_TYPES = [
         'xnor',
         'xor',
         ]
-NODE_CLASSES = dict(zip(NODE_TYPES, range(1, 1+len(NODE_TYPES))))
+NODE_CLASSES = dict(zip(NODE_TYPES, range(len(NODE_TYPES))))
 
 class Vertex(object):
-
     def __init__(self, type, name):
         self.type = type
         if type not in NODE_TYPES:
@@ -210,10 +211,6 @@ def main():
         for row in reader:
             addRow(row, g)
 
-    #m = g.generateMatrix(args.numVertices)
-    #g.printGraph()
-    #g.printMatrix(m, args.numVertices)
-
     numModelInputs = args.numVertices*2
     numModelOutputs = 1+args.numVertices
     entrySize = numModelInputs+numModelOutputs
@@ -222,7 +219,6 @@ def main():
         for i in range(args.permutations):
             m = g.generateMatrix(args.numVertices)
             data[i] = makeTrainingEntry(entrySize, args.label, g, m)
-            (features, labels) = np.hsplit(data[i], (args.numVertices*2,))
         np.save(f, data)
 
     return 0
